@@ -209,6 +209,37 @@ def init_state():
 init_state()
 
 # ─────────────────────────────────────────────────────────────────────────────
+# ── Persistent Storage ────────────────────────────────────────────────────────
+import json, os
+
+STORAGE_PATH = Path("/tmp/scholarai_materials.json")
+
+def load_persistent_materials():
+    """Load materials from persistent storage into session state."""
+    if "materials_loaded" in st.session_state:
+        return
+    try:
+        if STORAGE_PATH.exists():
+            data = json.loads(STORAGE_PATH.read_text())
+            # Merge with session state, preserving any courses not in file
+            for course in COURSES:
+                if course in data and data[course]:
+                    st.session_state.materials[course] = data[course]
+    except Exception:
+        pass
+    st.session_state.materials_loaded = True
+
+def save_persistent_materials():
+    """Save current materials to persistent storage."""
+    try:
+        STORAGE_PATH.write_text(
+            json.dumps(st.session_state.materials, indent=2))
+    except Exception as e:
+        st.warning(f"Could not save materials: {e}")
+
+load_persistent_materials()
+
+# ─────────────────────────────────────────────────────────────────────────────
 # ── Load API key from secrets or session state ────────────────────────────────
 def get_api_key():
     try:
@@ -379,6 +410,7 @@ with st.sidebar:
                         "content": content,
                         "added": datetime.now().strftime("%b %d %I:%M %p")
                     })
+                    save_persistent_materials()
                     st.success(f"✅ Added: {uploaded_file.name}")
                 else:
                     st.info(f"Already added: {uploaded_file.name}")
@@ -402,6 +434,7 @@ with st.sidebar:
                     "content": html,
                     "added": datetime.now().strftime("%b %d %I:%M %p")
                 })
+                save_persistent_materials()
                 st.success("✅ URL added!")
             except Exception as e:
                 st.error(f"Could not fetch: {e}")
@@ -424,6 +457,7 @@ with st.sidebar:
                 "content": content[:6000],
                 "added": datetime.now().strftime("%b %d %I:%M %p")
             })
+            save_persistent_materials()
             st.success(f"✅ Transcript added!")
 
     st.markdown("---")
@@ -508,6 +542,7 @@ with left_col:
                 with col_b:
                     if st.button("✕", key=f"remove_{course}_{i}", help="Remove"):
                         st.session_state.materials[course].pop(i)
+                        save_persistent_materials()
                         st.rerun()
         else:
             st.markdown(

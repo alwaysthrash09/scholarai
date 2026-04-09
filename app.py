@@ -388,22 +388,24 @@ with st.sidebar:
         accept_multiple_files=True)
 
     if uploaded_files:
-        for uploaded_file in uploaded_files:
-            with st.spinner(f"Reading {uploaded_file.name}..."):
-                suffix = Path(uploaded_file.name).suffix.lower()
-                file_bytes = uploaded_file.read()
-                if suffix == ".pdf":
-                    content = extract_pdf(file_bytes)
-                elif suffix == ".pptx":
-                    content = extract_pptx(file_bytes)
-                elif suffix in [".html", ".htm"]:
-                    content = extract_html(file_bytes)
-                else:
-                    content = file_bytes.decode("utf-8", errors="ignore")[:6000]
+        course = st.session_state.current_course
+        existing_names = [m["name"] for m in st.session_state.materials[course]]
+        new_files = [f for f in uploaded_files if f.name not in existing_names]
 
-                course = st.session_state.current_course
-                existing_names = [m["name"] for m in st.session_state.materials[course]]
-                if uploaded_file.name not in existing_names:
+        if new_files:
+            for uploaded_file in new_files:
+                with st.spinner(f"Reading {uploaded_file.name}..."):
+                    suffix = Path(uploaded_file.name).suffix.lower()
+                    file_bytes = uploaded_file.read()
+                    if suffix == ".pdf":
+                        content = extract_pdf(file_bytes)
+                    elif suffix == ".pptx":
+                        content = extract_pptx(file_bytes)
+                    elif suffix in [".html", ".htm"]:
+                        content = extract_html(file_bytes)
+                    else:
+                        content = file_bytes.decode("utf-8", errors="ignore")[:6000]
+
                     st.session_state.materials[course].append({
                         "name": uploaded_file.name,
                         "type": suffix,
@@ -412,8 +414,6 @@ with st.sidebar:
                     })
                     save_persistent_materials()
                     st.success(f"✅ Added: {uploaded_file.name}")
-                else:
-                    st.info(f"Already added: {uploaded_file.name}")
 
     url_input = st.text_input("Or paste a URL", placeholder="https://...")
     if st.button("+ Add URL", use_container_width=True) and url_input:
@@ -447,12 +447,13 @@ with st.sidebar:
         key="transcript_uploader",
         help="Upload a .txt or .md file exported from StudyScribe")
     if transcript_file:
-        content = transcript_file.read().decode("utf-8", errors="ignore")
         course  = st.session_state.current_course
         existing_names = [m["name"] for m in st.session_state.materials[course]]
-        if transcript_file.name not in existing_names:
+        transcript_key = f"[Transcript] {transcript_file.name}"
+        if transcript_key not in existing_names:
+            content = transcript_file.read().decode("utf-8", errors="ignore")
             st.session_state.materials[course].append({
-                "name": f"[Transcript] {transcript_file.name}",
+                "name": transcript_key,
                 "type": "transcript",
                 "content": content[:6000],
                 "added": datetime.now().strftime("%b %d %I:%M %p")

@@ -206,6 +206,14 @@ def init_state():
 init_state()
 
 # ─────────────────────────────────────────────────────────────────────────────
+# ── Load API key from secrets or session state ────────────────────────────────
+def get_api_key():
+    try:
+        return st.secrets["ANTHROPIC_API_KEY"]
+    except Exception:
+        pass
+    return st.session_state.get("api_key", "")
+
 def extract_pdf(file_bytes):
     try:
         import pypdf
@@ -247,7 +255,7 @@ def get_context(course):
     return "\n\n".join(parts)
 
 def chat_with_claude(user_message, course, system_override=None):
-    key = st.session_state.api_key
+    key = get_api_key()
     if not key:
         return "⚠️ Please enter your Anthropic API key in the sidebar."
 
@@ -293,14 +301,20 @@ with st.sidebar:
     st.markdown("---")
 
     st.markdown("### ⚙️ Settings")
-    api_key_input = st.text_input(
-        "Anthropic API Key",
-        type="password",
-        placeholder="sk-ant-...",
-        value=st.session_state.api_key,
-        help="Get your key at console.anthropic.com")
-    if api_key_input:
-        st.session_state.api_key = api_key_input
+
+    # Only show API key field if not in secrets
+    try:
+        st.secrets["ANTHROPIC_API_KEY"]
+        st.success("🔑 API key loaded!")
+    except Exception:
+        api_key_input = st.text_input(
+            "Anthropic API Key",
+            type="password",
+            placeholder="sk-ant-...",
+            value=st.session_state.api_key,
+            help="Get your key at console.anthropic.com")
+        if api_key_input:
+            st.session_state.api_key = api_key_input
 
     name_input = st.text_input(
         "Your Name",
@@ -450,7 +464,7 @@ with left_col:
 
     for label, prompt in actions:
         if st.button(label, key=f"action_{label}_{course}", use_container_width=True):
-            if not st.session_state.api_key:
+            if not get_api_key():
                 st.warning("Please enter your API key in the sidebar first.")
             else:
                 with st.spinner("ScholarAI is thinking..."):
@@ -530,7 +544,7 @@ with right_col:
     user_input = st.chat_input(
         f"Ask anything about {course}...")
     if user_input:
-        if not st.session_state.api_key:
+        if not get_api_key():
             st.warning("Please enter your Anthropic API key in the sidebar.")
         else:
             with st.chat_message("user", avatar="👤"):

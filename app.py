@@ -327,38 +327,39 @@ with st.sidebar:
     st.markdown("### 📎 Add Materials")
     st.markdown(f"*Adding to: **{st.session_state.current_course}***")
 
-    uploaded_file = st.file_uploader(
-        "Upload File",
+    uploaded_files = st.file_uploader(
+        "Upload Files",
         type=["pdf", "pptx", "txt", "md", "html", "htm"],
-        help="PDF, PowerPoint, text, or HTML files",
-        key="file_uploader")
+        help="PDF, PowerPoint, text, or HTML files — select multiple at once!",
+        key="file_uploader",
+        accept_multiple_files=True)
 
-    if uploaded_file:
-        with st.spinner("Reading file..."):
-            suffix = Path(uploaded_file.name).suffix.lower()
-            file_bytes = uploaded_file.read()
-            if suffix == ".pdf":
-                content = extract_pdf(file_bytes)
-            elif suffix == ".pptx":
-                content = extract_pptx(file_bytes)
-            elif suffix in [".html", ".htm"]:
-                content = extract_html(file_bytes)
-            else:
-                content = file_bytes.decode("utf-8", errors="ignore")[:6000]
+    if uploaded_files:
+        for uploaded_file in uploaded_files:
+            with st.spinner(f"Reading {uploaded_file.name}..."):
+                suffix = Path(uploaded_file.name).suffix.lower()
+                file_bytes = uploaded_file.read()
+                if suffix == ".pdf":
+                    content = extract_pdf(file_bytes)
+                elif suffix == ".pptx":
+                    content = extract_pptx(file_bytes)
+                elif suffix in [".html", ".htm"]:
+                    content = extract_html(file_bytes)
+                else:
+                    content = file_bytes.decode("utf-8", errors="ignore")[:6000]
 
-            course = st.session_state.current_course
-            # Avoid duplicates
-            existing_names = [m["name"] for m in st.session_state.materials[course]]
-            if uploaded_file.name not in existing_names:
-                st.session_state.materials[course].append({
-                    "name": uploaded_file.name,
-                    "type": suffix,
-                    "content": content,
-                    "added": datetime.now().strftime("%b %d %I:%M %p")
-                })
-                st.success(f"✅ Added: {uploaded_file.name}")
-            else:
-                st.info("Already added!")
+                course = st.session_state.current_course
+                existing_names = [m["name"] for m in st.session_state.materials[course]]
+                if uploaded_file.name not in existing_names:
+                    st.session_state.materials[course].append({
+                        "name": uploaded_file.name,
+                        "type": suffix,
+                        "content": content,
+                        "added": datetime.now().strftime("%b %d %I:%M %p")
+                    })
+                    st.success(f"✅ Added: {uploaded_file.name}")
+                else:
+                    st.info(f"Already added: {uploaded_file.name}")
 
     url_input = st.text_input("Or paste a URL", placeholder="https://...")
     if st.button("+ Add URL", use_container_width=True) and url_input:
@@ -432,36 +433,9 @@ st.markdown(f"""
 # ── Two column layout ────────────────────────────────────────────────────────
 left_col, right_col = st.columns([1, 2], gap="large")
 
-# ── LEFT: Materials + Quick Actions ─────────────────────────────────────────
+# ── LEFT: Quick Actions + Materials ─────────────────────────────────────────
 with left_col:
-    # Materials list
-    st.markdown(f'<div class="section-label">📎 {course} Materials</div>',
-                unsafe_allow_html=True)
-
-    mats = st.session_state.materials.get(course, [])
-    if mats:
-        for i, m in enumerate(mats):
-            type_icon = {"pdf":"📄","pptx":"📊",".txt":"📝",
-                         "transcript":"🎙","url":"🌐",
-                         ".html":"🌐",".htm":"🌐","html":"🌐"}.get(m["type"], "📎")
-            col_a, col_b = st.columns([5, 1])
-            with col_a:
-                st.markdown(
-                    f'<div class="material-item">{type_icon} {m["name"][:35]}<br>'
-                    f'<span style="color:#3A3A5A;font-size:0.75rem;">{m["added"]}</span></div>',
-                    unsafe_allow_html=True)
-            with col_b:
-                if st.button("✕", key=f"remove_{course}_{i}", help="Remove"):
-                    st.session_state.materials[course].pop(i)
-                    st.rerun()
-    else:
-        st.markdown(
-            '<div style="color:#3A3A5A; font-size:0.85rem; padding:12px;">No materials yet — upload files in the sidebar!</div>',
-            unsafe_allow_html=True)
-
-    st.markdown("---")
-
-    # Quick Actions
+    # Quick Actions FIRST
     st.markdown('<div class="section-label">⚡ Quick Actions</div>',
                 unsafe_allow_html=True)
 
@@ -491,6 +465,32 @@ with left_col:
     if st.button("🗑️ Clear Chat History", use_container_width=True):
         st.session_state.histories[course] = []
         st.rerun()
+
+    st.markdown("---")
+
+    # Materials list BELOW — collapsible
+    mats = st.session_state.materials.get(course, [])
+    mat_count = len(mats)
+    with st.expander(f"📎 {course} Materials ({mat_count} file{'s' if mat_count != 1 else ''})", expanded=False):
+        if mats:
+            for i, m in enumerate(mats):
+                type_icon = {"pdf":"📄","pptx":"📊",".txt":"📝",
+                             "transcript":"🎙","url":"🌐",
+                             ".html":"🌐",".htm":"🌐","html":"🌐"}.get(m["type"], "📎")
+                col_a, col_b = st.columns([5, 1])
+                with col_a:
+                    st.markdown(
+                        f'<div class="material-item">{type_icon} {m["name"][:35]}<br>'
+                        f'<span style="color:#3A3A5A;font-size:0.75rem;">{m["added"]}</span></div>',
+                        unsafe_allow_html=True)
+                with col_b:
+                    if st.button("✕", key=f"remove_{course}_{i}", help="Remove"):
+                        st.session_state.materials[course].pop(i)
+                        st.rerun()
+        else:
+            st.markdown(
+                '<div style="color:#3A3A5A; font-size:0.85rem; padding:8px;">No materials yet — upload files in the sidebar!</div>',
+                unsafe_allow_html=True)
 
 # ── RIGHT: Chat ──────────────────────────────────────────────────────────────
 with right_col:

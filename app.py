@@ -227,6 +227,18 @@ def extract_pptx(file_bytes):
     except Exception as e:
         return f"[Could not read PPTX: {e}]"
 
+def extract_html(file_bytes):
+    try:
+        import re
+        html = file_bytes.decode("utf-8", errors="ignore")
+        html = re.sub(r"<style[^>]*>.*?</style>", "", html, flags=re.DOTALL)
+        html = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL)
+        html = re.sub(r"<[^>]+>", " ", html)
+        html = re.sub(r"\s+", " ", html).strip()
+        return html[:6000]
+    except Exception as e:
+        return f"[Could not read HTML: {e}]"
+
 def get_context(course):
     mats = st.session_state.materials.get(course, [])
     parts = []
@@ -317,8 +329,8 @@ with st.sidebar:
 
     uploaded_file = st.file_uploader(
         "Upload File",
-        type=["pdf", "pptx", "txt", "md"],
-        help="PDF, PowerPoint, or text files",
+        type=["pdf", "pptx", "txt", "md", "html", "htm"],
+        help="PDF, PowerPoint, text, or HTML files",
         key="file_uploader")
 
     if uploaded_file:
@@ -329,6 +341,8 @@ with st.sidebar:
                 content = extract_pdf(file_bytes)
             elif suffix == ".pptx":
                 content = extract_pptx(file_bytes)
+            elif suffix in [".html", ".htm"]:
+                content = extract_html(file_bytes)
             else:
                 content = file_bytes.decode("utf-8", errors="ignore")[:6000]
 
@@ -428,7 +442,8 @@ with left_col:
     if mats:
         for i, m in enumerate(mats):
             type_icon = {"pdf":"📄","pptx":"📊",".txt":"📝",
-                         "transcript":"🎙","url":"🌐"}.get(m["type"], "📎")
+                         "transcript":"🎙","url":"🌐",
+                         ".html":"🌐",".htm":"🌐","html":"🌐"}.get(m["type"], "📎")
             col_a, col_b = st.columns([5, 1])
             with col_a:
                 st.markdown(

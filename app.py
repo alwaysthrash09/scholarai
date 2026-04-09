@@ -202,6 +202,9 @@ def init_state():
         st.session_state.api_key = ""
     if "student_name" not in st.session_state:
         st.session_state.student_name = ""
+    if "session_file" not in st.session_state:
+        st.session_state.session_file = None   # {name, content}
+        st.session_state.session_file_name = ""
 
 init_state()
 
@@ -254,7 +257,7 @@ def get_context(course):
         parts.append(f"=== {m['name']} ===\n{m['content'][:3000]}")
     return "\n\n".join(parts)
 
-def chat_with_claude(user_message, course, system_override=None):
+def chat_with_claude(user_message, course, system_override=None, session_context=None):
     key = get_api_key()
     if not key:
         return "⚠️ Please enter your Anthropic API key in the sidebar."
@@ -262,6 +265,11 @@ def chat_with_claude(user_message, course, system_override=None):
     context = get_context(course)
     name = st.session_state.student_name
     student_note = f" The student's name is {name}." if name else ""
+
+    # Add session file context if provided
+    session_note = ""
+    if session_context:
+        session_note = f"\n\nSESSION FILE (for this conversation only — do not store):\n{session_context}"
 
     system = system_override or f"""You are ScholarAI, a dedicated MBA study tutor for a Boston College MBA part-time student who also works full-time.{student_note}
 
@@ -274,7 +282,7 @@ Your personality:
 - Connects concepts to real-world business applications
 - Aware this is an MBA student — assumes professional maturity
 
-{"COURSE MATERIALS:" + chr(10) + context if context else "No materials uploaded yet for this course. Encourage the student to upload their materials."}
+{"COURSE MATERIALS:" + chr(10) + context if context else "No materials uploaded yet for this course. Encourage the student to upload their materials."}{session_note}
 
 Structure longer responses with clear headers and bullet points for easy scanning.
 End responses with a follow-up question or suggestion to keep learning going."""
@@ -540,6 +548,57 @@ with right_col:
             mime="text/markdown",
             use_container_width=True)
 
+    # ── Session file upload ──────────────────────────────────────────────────
+    st.markdown('<div class="section-label">📂 Attach a File to This Conversation</div>',
+                unsafe_allow_html=True)
+    st.caption("Upload a dataset, assignment, or any file for ScholarAI to reference in this chat. Not saved to your course materials.")
+
+    session_upload = st.file_uploader(
+        "Upload file for this chat",
+        type=["csv", "txt", "md", "pdf", "html", "htm", "json", "pptx"],
+        key=f"session_upload_{course}",
+        label_visibility="collapsed")
+
+    if session_upload:
+        with st.spinner("Reading file..."):
+            suffix = Path(session_upload.name).suffix.lower()
+            file_bytes = session_upload.read()
+            if suffix == ".pdf":
+                content = extract_pdf(file_bytes)
+            elif suffix == ".pptx":
+                content = extract_pptx(file_bytes)
+            elif suffix in [".html", ".htm"]:
+                content = extract_html(file_bytes)
+            elif suffix == ".csv":
+                # Show CSV as plain text — keep first 200 rows
+                raw = file_bytes.decode("utf-8", errors="ignore")
+                lines = raw.splitlines()
+                content = "\n".join(lines[:200])
+                if len(lines) > 200:
+                    content += f"\n... ({len(lines)-200} more rows not shown)"
+            elif suffix == ".json":
+                import json
+                try:
+                    parsed = json.loads(file_bytes.decode("utf-8", errors="ignore"))
+                    content = json.dumps(parsed, indent=2)[:6000]
+                except Exception:
+                    content = file_bytes.decode("utf-8", errors="ignore")[:6000]
+            else:
+                content = file_bytes.decode("utf-8", errors="ignore")[:6000]
+
+            st.session_state.session_file = content
+            st.session_state.session_file_name = session_upload.name
+
+    if st.session_state.session_file:
+        col_info, col_clear = st.columns([5, 1])
+        with col_info:
+            st.success(f"📎 **{st.session_state.session_file_name}** attached to this chat")
+        with col_clear:
+            if st.button("✕", key="clear_session_file", help="Remove file"):
+                st.session_state.session_file = None
+                st.session_state.session_file_name = ""
+                st.rerun()
+
     # Chat input
     user_input = st.chat_input(
         f"Ask anything about {course}...")
@@ -552,7 +611,9 @@ with right_col:
 
             with st.chat_message("assistant", avatar="🦅"):
                 with st.spinner("Thinking..."):
-                    reply = chat_with_claude(user_input, course)
+                    reply = chat_with_claude(
+                        user_input, course,
+                        session_context=st.session_state.session_file)
                     st.markdown(reply)
 
             st.session_state.histories[course].append(

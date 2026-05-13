@@ -209,33 +209,93 @@ def init_state():
 init_state()
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ── Persistent Storage ────────────────────────────────────────────────────────
-import json, os
+# ── Persistent Storage via GitHub Gist ───────────────────────────────────────
+import json, os, urllib.request, urllib.error
 
-STORAGE_PATH = Path("/tmp/scholarai_materials.json")
+GIST_FILENAME = "scholarai_materials.json"
+
+def get_gist_token():
+    try:
+        return st.secrets["GITHUB_TOKEN"]
+    except Exception:
+        return st.session_state.get("github_token", "")
+
+def get_gist_id():
+    try:
+        return st.secrets["GIST_ID"]
+    except Exception:
+        return st.session_state.get("gist_id", "")
+
+def gist_request(method, url, token, data=None):
+    req = urllib.request.Request(url)
+    req.add_header("Authorization", f"token {token}")
+    req.add_header("Accept", "application/vnd.github+json")
+    req.add_header("Content-Type", "application/json")
+    req.method = method
+    body = json.dumps(data).encode() if data else None
+    with urllib.request.urlopen(req, data=body, timeout=10) as r:
+        return json.loads(r.read().decode())
+
+def create_gist(token):
+    """Create a new private Gist and return its ID."""
+    data = {
+        "description": "ScholarAI Materials Storage",
+        "public": False,
+        "files": {
+            GIST_FILENAME: {
+                "content": json.dumps({c: [] for c in COURSES}, indent=2)
+            }
+        }
+    }
+    result = gist_request("POST", "https://api.github.com/gists", token, data)
+    return result["id"]
 
 def load_persistent_materials():
-    """Load materials from persistent storage into session state."""
+    """Load materials from GitHub Gist into session state."""
     if "materials_loaded" in st.session_state:
         return
+
+    token   = get_gist_token()
+    gist_id = get_gist_id()
+
+    if not token or not gist_id:
+        st.session_state.materials_loaded = True
+        return
+
     try:
-        if STORAGE_PATH.exists():
-            data = json.loads(STORAGE_PATH.read_text())
-            # Merge with session state, preserving any courses not in file
-            for course in COURSES:
-                if course in data and data[course]:
-                    st.session_state.materials[course] = data[course]
+        result  = gist_request("GET",
+            f"https://api.github.com/gists/{gist_id}", token)
+        content = result["files"][GIST_FILENAME]["content"]
+        data    = json.loads(content)
+        for course in COURSES:
+            if course in data and data[course]:
+                st.session_state.materials[course] = data[course]
     except Exception:
         pass
+
     st.session_state.materials_loaded = True
 
 def save_persistent_materials():
-    """Save current materials to persistent storage."""
+    """Save current materials to GitHub Gist."""
+    token   = get_gist_token()
+    gist_id = get_gist_id()
+
+    if not token or not gist_id:
+        return
+
     try:
-        STORAGE_PATH.write_text(
-            json.dumps(st.session_state.materials, indent=2))
+        data = {
+            "files": {
+                GIST_FILENAME: {
+                    "content": json.dumps(
+                        st.session_state.materials, indent=2)
+                }
+            }
+        }
+        gist_request("PATCH",
+            f"https://api.github.com/gists/{gist_id}", token, data)
     except Exception as e:
-        st.warning(f"Could not save materials: {e}")
+        st.warning(f"Could not save to Gist: {e}")
 
 load_persistent_materials()
 
@@ -354,6 +414,53 @@ with st.sidebar:
             help="Get your key at console.anthropic.com")
         if api_key_input:
             st.session_state.api_key = api_key_input
+
+    # GitHub Gist storage setup
+    st.markdown("---")
+    st.markdown("### 💾 Permanent Storage")
+
+    gist_configured = False
+    try:
+        st.secrets["GITHUB_TOKEN"]
+        st.secrets["GIST_ID"]
+        st.success("✅ Storage connected!")
+        gist_configured = True
+    except Exception:
+        with st.expander("🔧 Set up permanent storage", expanded=not st.session_state.get("gist_id")):
+            st.caption("Connect GitHub Gist to save materials permanently across all devices.")
+
+            gh_token = st.text_input(
+                "GitHub Token",
+                type="password",
+                placeholder="ghp_...",
+                value=st.session_state.get("github_token", ""),
+                help="github.com → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token → check 'gist'")
+
+            gist_id_input = st.text_input(
+                "Gist ID",
+                placeholder="Leave blank to auto-create",
+                value=st.session_state.get("gist_id", ""))
+
+            if st.button("Connect Storage", use_container_width=True) and gh_token:
+                with st.spinner("Connecting..."):
+                    try:
+                        if not gist_id_input:
+                            # Auto-create a new Gist
+                            new_id = create_gist(gh_token)
+                            st.session_state.github_token = gh_token
+                            st.session_state.gist_id = new_id
+                            st.session_state.materials_loaded = False
+                            st.success(f"✅ Created! Gist ID: `{new_id}`")
+                            st.info("💡 Save this Gist ID somewhere — paste it here next time to reconnect!")
+                            st.rerun()
+                        else:
+                            st.session_state.github_token = gh_token
+                            st.session_state.gist_id = gist_id_input
+                            st.session_state.materials_loaded = False
+                            st.success("✅ Connected!")
+                            st.rerun()
+                    except Exception as e:
+                        st.error(f"Could not connect: {e}")
 
     name_input = st.text_input(
         "Your Name",

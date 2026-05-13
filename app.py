@@ -366,17 +366,26 @@ def chat_with_claude(user_message, course, system_override=None, session_context
 
 Current course: {course}
 
+CRITICAL RULES — FOLLOW THESE STRICTLY:
+1. You ONLY use information from the course materials provided below. Nothing else.
+2. If a topic is NOT covered in the provided materials, say: "I don't see that covered in your uploaded materials. Ask your professor or check your course resources."
+3. NEVER supplement with outside knowledge, textbook definitions, or general MBA concepts not present in the materials.
+4. NEVER make assumptions about what the course covers beyond what is explicitly in the materials.
+5. If no materials are uploaded, tell the student to upload their course materials before you can help.
+
+These rules exist because your professor has intentionally curated specific content. Introducing outside information could hurt your grade.
+
 Your personality:
 - Conversational and encouraging like a great personal tutor
 - Thorough but respects the student's limited time
 - Uses plain English — avoids unnecessary jargon
-- Connects concepts to real-world business applications
-- Aware this is an MBA student — assumes professional maturity
+- Connects concepts ONLY to examples found in the course materials
 
-{"COURSE MATERIALS:" + chr(10) + context if context else "No materials uploaded yet for this course. Encourage the student to upload their materials."}{session_note}
+{"COURSE MATERIALS (your ONLY source of truth):" + chr(10) + context if context else "⚠️ No materials uploaded yet for this course. Please upload your course materials in the sidebar before asking questions."}
 
 Structure longer responses with clear headers and bullet points for easy scanning.
-End responses with a follow-up question or suggestion to keep learning going."""
+Always cite which material you're drawing from (e.g. 'According to your Week 3 slides...')
+End responses with a follow-up question or suggestion based only on the uploaded materials."""
 
     history = st.session_state.histories[course][-10:]
     messages = list(history) + [{"role": "user", "content": user_message}]
@@ -604,12 +613,12 @@ with left_col:
                 unsafe_allow_html=True)
 
     actions = [
-        ("📋 Module Report",      f"Generate a detailed weekly module report for my {course} course based on the materials I've uploaded. Include key concepts, frameworks, real-world applications, and what to focus on for exams."),
-        ("📚 Study Guide",        f"Create a comprehensive study guide for {course} based on my uploaded materials. Organize by topic with key terms, core concepts, and important things to remember."),
-        ("❓ Quiz Me",            f"Quiz me on {course}! Give me 5 MBA-level questions based on my course materials — mix conceptual and applied. After I answer, give me detailed feedback."),
-        ("📅 Study Plan",         f"Based on my {course} materials, help me create a realistic study plan. I'm a part-time MBA student working full-time so time is limited. Prioritize important topics and suggest how many hours to allocate."),
-        ("✏️ Assignment Help",    f"I need help with a {course} assignment. Ask me about the assignment details so you can help me structure my approach and address all requirements."),
-        ("💡 Explain a Concept",  f"Ask me which concept from {course} I'd like explained in simple, plain English with a real-world business example."),
+        ("📋 Module Report",      f"Generate a detailed weekly module report for my {course} course using ONLY my uploaded materials. Do not add any outside information. Stick strictly to what is in my materials."),
+        ("📚 Study Guide",        f"Create a study guide for {course} using ONLY my uploaded materials. Only include terms, concepts, and frameworks explicitly covered in my materials."),
+        ("❓ Quiz Me",            f"Quiz me on {course} using ONLY questions based on my uploaded materials. Do not ask about anything not explicitly covered in my materials."),
+        ("📅 Study Plan",         f"Based ONLY on my uploaded {course} materials, help me create a realistic study plan. I'm a part-time MBA student working full-time. Only reference topics actually covered in my materials."),
+        ("✏️ Assignment Help",    f"I need help with a {course} assignment. Ask me about the assignment details and help me using ONLY concepts from my uploaded course materials."),
+        ("💡 Explain a Concept",  f"Ask me which concept from {course} I'd like explained. Only explain it using information from my uploaded materials — do not bring in outside sources."),
     ]
 
     for label, prompt in actions:
